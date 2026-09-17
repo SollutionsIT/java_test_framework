@@ -1,0 +1,71 @@
+stages:
+  - lint
+  - test
+  - deploy
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_COMMIT_BRANCH'
+
+variables:
+  MAVEN_USER_HOME: "$CI_PROJECT_DIR/.m2"
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  BASE_URL: "http://127.0.0.1:8080"
+  DEMO_MODE: "true"
+  HEADLESS: "true"
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+cache:
+  key:
+    files:
+      - pom.xml
+      - .mvn/wrapper/maven-wrapper.properties
+  paths:
+    - .m2/
+
+lint:
+  image: maven:3.9.11-eclipse-temurin-17
+  stage: lint
+  script:
+    - ./mvnw -B -ntp validate
+
+tests:
+  # Keep this version identical to playwright.version in pom.xml.
+  image: mcr.microsoft.com/playwright/java:v1.58.0-noble
+  stage: test
+  script:
+    - ./mvnw -B -ntp verify
+  after_script:
+    - ./mvnw -B -ntp surefire-report:report-only
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - target/surefire-reports/
+      - target/site/
+      - target/ui-artifacts/
+    reports:
+      junit: target/surefire-reports/TEST-*.xml
+
+deploy-report:
+  image: alpine:3.21
+  stage: deploy
+  cache: []
+  needs:
+    - job: tests
+      artifacts: true
+  script:
+    - test -s target/site/surefire-report.html
+    - mkdir -p public
+    - cp -R target/site/. public/
+    - cp public/surefire-report.html public/index.html
+  pages:
+    publish: public
+  artifacts:
+    paths:
+      - public/
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'

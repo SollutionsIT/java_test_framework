@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Task Board · QA portfolio</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f4f6fa; color: #172339; font: 16px/1.6 system-ui, sans-serif; }
+    main { max-width: 760px; margin: 70px auto; padding: 32px; background: white; border: 1px solid #dde4ed; border-radius: 18px; }
+    .eyebrow { color: #54677e; text-transform: uppercase; letter-spacing: .14em; font-size: 12px; }
+    h1 { font-size: 36px; margin: 8px 0; }
+    label { display: block; font-weight: 600; }
+    .entry { display: flex; gap: 12px; margin-top: 8px; }
+    input[type=text] { flex: 1; min-width: 0; padding: 12px; border: 1px solid #aebbcf; border-radius: 8px; font: inherit; }
+    button { padding: 10px 18px; border: 0; border-radius: 8px; background: #254fd8; color: white; font: inherit; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    ul { list-style: none; padding: 0; }
+    li { display: flex; align-items: center; gap: 12px; padding: 16px 0; border-bottom: 1px solid #e4e8ef; }
+    li span { flex: 1; overflow-wrap: anywhere; }
+    li button { background: #edf1fa; color: #233d78; }
+    li[data-completed=true] span { text-decoration: line-through; color: #617086; }
+    [role=alert] { color: #ab2439; min-height: 26px; }
+  </style>
+</head>
+<body><main>
+  <div class="eyebrow">QA portfolio / demo application</div>
+  <h1>Task Board</h1><p>A small workspace for the things you want to get done.</p>
+  <form novalidate>
+    <label for="title">Task title</label>
+    <div class="entry"><input id="title" type="text" autocomplete="off"><button type="submit">Add task</button></div>
+  </form>
+  <p role="alert" aria-live="polite"></p>
+  <ul aria-label="Tasks"></ul>
+</main>
+<script>
+  const list = document.querySelector('ul');
+  const input = document.querySelector('#title');
+  const error = document.querySelector('[role=alert]');
+  async function api(path = '', method = 'GET', body) {
+    const response = await fetch('api/tasks' + path, {
+      method, headers: {'Content-Type': 'application/json'},
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    return response.status === 204 ? null : response.json();
+  }
+  async function action(operation) {
+    error.textContent = '';
+    try { await operation(); } catch (e) { error.textContent = e.message; }
+  }
+  async function refresh() {
+    const tasks = await api();
+    list.replaceChildren();
+    for (const task of tasks) {
+      const row = document.createElement('li');
+      row.dataset.testid = 'task'; row.dataset.completed = task.completed; row.dataset.id = task.id;
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox'; checkbox.checked = task.completed;
+      checkbox.setAttribute('aria-label', 'Complete ' + task.title);
+      checkbox.onchange = () => action(async () => {
+        await api('/' + task.id, 'PATCH', {completed: checkbox.checked}); await refresh();
+      });
+      const title = document.createElement('span');
+      title.dataset.testid = 'task-title'; title.textContent = task.title;
+      const remove = document.createElement('button'); remove.textContent = 'Delete';
+      remove.onclick = () => action(async () => { await api('/' + task.id, 'DELETE'); await refresh(); });
+      row.append(checkbox, title, remove); list.append(row);
+    }
+  }
+  document.querySelector('form').onsubmit = event => {
+    event.preventDefault();
+    action(async () => { await api('', 'POST', {title: input.value}); input.value = ''; await refresh(); });
+  };
+  action(refresh);
+</script></body></html>
